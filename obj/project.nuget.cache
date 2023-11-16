@@ -1,0 +1,10 @@
+{
+  "version": 2,
+  "dgSpecHash": "XjSlKl6NiOBLE4hDHroC6agF297yaTV9Bc9UYeRHGeZiwrXEJEIbsKdfXmRApm44ctn58mrTBime/FsiK1ww6w==",
+  "success": true,
+  "projectFilePath": "C:\\Users\\RoryF\\source\\repos\\P2PProject\\P2PProject.csproj",
+  "expectedPackageFiles": [
+    "C:\\Users\\RoryF\\.nuget\\packages\\newtonsoft.json\\13.0.3\\newtonsoft.json.13.0.3.nupkg.sha512"
+  ],
+  "logs": []
+}
