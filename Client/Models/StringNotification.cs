@@ -6,11 +6,11 @@ using System.Threading.Tasks;
 
 namespace P2PProject.Client.Models
 {
-    [Serializable]
-    public class Message : ISendableItem
+    public class StringNotification : ISendableItem
     {
-        public long Id { get; set; }
+        public Guid Id { get; set; }
         public string Content { get; set; }
-        public long SenderId { get; set; }
+        public Guid SenderId { get; set; }
+        public DateTime? Timestamp { get; set; }
     }
 }

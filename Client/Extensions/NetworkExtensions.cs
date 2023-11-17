@@ -9,7 +9,7 @@ using System.Threading.Tasks;
 namespace P2PProject.Client.Extensions
 {
     public static class NetworkExtensions
-    {
+    {        
         public static IPAddress GetLocalIPAddress()
         {
             var host = Dns.GetHostEntry(Dns.GetHostName());

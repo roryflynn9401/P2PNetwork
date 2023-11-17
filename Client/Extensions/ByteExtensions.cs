@@ -10,7 +10,7 @@ namespace P2PProject.Client.Extensions
 
         private static JsonSerializerSettings _serializationSettings = new JsonSerializerSettings
         {
-            TypeNameHandling = TypeNameHandling.All,
+            TypeNameHandling = TypeNameHandling.Objects,
         };
 
         public static byte[] GetByteArray<T>(T item)

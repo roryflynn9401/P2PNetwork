@@ -8,7 +8,8 @@ namespace P2PProject.Client.Models
 {
     public interface ISendableItem
     {
-         long Id { get; set; }
-         long SenderId { get; set; }
+        Guid Id { get; set; }
+        Guid SenderId { get; set; }
+        DateTime? Timestamp { get; set; }
     }
 }

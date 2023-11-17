@@ -11,9 +11,8 @@ namespace P2PProject.Client.Models
     {
         public ClientInfo() { }
 
-        public IPEndPoint LocalCLientEndpoint { get; set; }
-        public IPEndPoint ExternalCLientEndpoint { get; set; }
-
-        public long ClientId { get; set; }
+        public IPAddress LocalClientIP { get; set; }
+        public int Port { get; set; }
+        public Guid ClientId { get; set; }
     }
 }
