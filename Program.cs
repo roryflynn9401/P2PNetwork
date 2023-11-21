@@ -9,7 +9,7 @@ namespace P2PProject
     {
         public enum SendTypes { String = 1, Notification = 2,};
 
-        private static List<string> _commands = new() { "Connect to network via IP", "Connect to network via discovery network", "Initalise Network", "Add Data" };
+        private static List<string> _commands = new() { "Connect to network via IP", "Connect to network via discovery network", "Initalise Network", "Add Data", "View Nodes on Network", "View Data", "Assign Local nickname" };
         private static bool _quit = false;
         private static Node _localClient = new();
         private static Action _inputError = () => { Console.WriteLine("Input not recognised, returning to menu");};
@@ -42,10 +42,12 @@ namespace P2PProject
                                     Console.WriteLine($"Attempting connection to {ipAddress}:{port}");
                                     var connectionMessage = new ConnectionNotification
                                     {
-                                        IP = _localClient.LocalClientInfo.LocalClientIP.ToString(), 
+                                        IP = _localClient.LocalClientInfo.LocalClientIP.ToString(),
                                         Port = _localClient.LocalClientInfo.Port,
                                         Id = Guid.NewGuid(),
-                                        SenderId = _localClient.LocalClientInfo.ClientId
+                                        SenderId = _localClient.LocalClientInfo.ClientId,
+                                        SendData = true,
+                                        Timestamp = DateTime.UtcNow,
                                     };
                                     await _localClient.IPInitialConnection(connectEndpoint, connectionMessage);
                                     Console.WriteLine("Connection request made, waiting for response...");                                    
@@ -105,6 +107,20 @@ namespace P2PProject
                                         break;
                                 }
                                
+                            }
+                            break;
+                        case 5:
+                            Console.WriteLine("Nodes currently on the network:");
+                            foreach(var node in DataStore.NodeMap.Select(x => x.Value))
+                            {
+                                Console.WriteLine($"{node.IP}:{node.Port}");
+                            }
+                            break;
+                        case 6:
+                            Console.WriteLine("Data currently stored:");
+                            foreach (var dataPair in DataStore.NetworkData.OrderBy(x => x.GetType()))
+                            {
+                                Console.WriteLine($"{dataPair.Key}: {dataPair.GetType().Name}");
                             }
                             break;
 

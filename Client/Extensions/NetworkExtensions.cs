@@ -1,10 +1,5 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
+﻿using System.Net;
 using System.Net.Sockets;
-using System.Net;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace P2PProject.Client.Extensions
 {
@@ -22,5 +17,7 @@ namespace P2PProject.Client.Extensions
             }
             throw new Exception("No network adapters with an IPv4 address in the system!");
         }
+
+        public static Models.EndPoint ToEndpoint(this IPEndPoint ep) => new Models.EndPoint(ep.Address.ToString(), ep.Port);
     }
 }

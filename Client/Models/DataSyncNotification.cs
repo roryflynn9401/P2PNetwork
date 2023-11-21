@@ -1,9 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Net;
-using System.Text;
-using System.Threading.Tasks;
+﻿using P2PProject.Client.Extensions;
 
 namespace P2PProject.Client.Models
 {
@@ -11,7 +6,8 @@ namespace P2PProject.Client.Models
     {
         public Guid Id { get; set; }
         public Guid SenderId { get; set; }
-        public Dictionary<Guid, IPEndPoint> NodeMap { get; set; } = new();
+       
+        public Dictionary<Guid, EndPoint> NodeMap { get; set; } = new();
         public Dictionary<Guid, ISendableItem> NetworkData { get; set; } = new();
         public DateTime? Timestamp { get; set; }
     }

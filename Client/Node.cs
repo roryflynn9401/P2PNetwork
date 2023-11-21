@@ -1,7 +1,6 @@
 ﻿using P2PProject.Client.EventHandlers;
 using P2PProject.Client.Extensions;
 using P2PProject.Client.Models;
-using System.Linq;
 using System.Net;
 using System.Net.Sockets;
 
@@ -45,7 +44,7 @@ namespace P2PProject.Client
                 }
                 catch(SocketException se)
                 {
-                    //Port likely in use, retry
+                    //Port likely in use, retry print error for now
                     Console.WriteLine(se.ToString());
                 }
                 catch (Exception e)
@@ -58,17 +57,11 @@ namespace P2PProject.Client
 
         public async Task SendUDP(Guid recipientId, ISendableItem item)
         {
-            item.SenderId = LocalClientInfo.ClientId;
-            var sendData = ByteExtensions.GetByteArray(item);
             try
             {    
-                if (sendData != null && DataStore.NodeMap.TryGetValue(recipientId, out IPEndPoint send))
+                if (DataStore.NodeMap.TryGetValue(recipientId, out Models.EndPoint send))
                 {
-                    //Only local addresses for now
-                    Console.WriteLine($"Sending data to {send.Address} at port {send.Port}");
-
-                    using var client = new UdpClient();
-                    await client.SendAsync(sendData, sendData.Length, send);
+                    await SendUDP(send.IPEndPoint, item);
                 }
                     
             }
@@ -76,6 +69,20 @@ namespace P2PProject.Client
             {
                 Console.WriteLine(e.ToString());
             }
+        }
+
+        public async Task SendUDP(IPEndPoint recipient, ISendableItem item)
+        {           
+            var sendData = ByteExtensions.GetByteArray(item);
+
+            if (sendData != null )
+            {
+                //Only local addresses for now
+                Console.WriteLine($"Sending data to {recipient.Address} at port {recipient.Port}");
+
+                using var client = new UdpClient();
+                await client.SendAsync(sendData, sendData.Length, recipient);
+            }            
         }
 
         public async Task SendUDPToAllNodes(List<Guid> ids, ISendableItem item)
@@ -88,10 +95,8 @@ namespace P2PProject.Client
         #endregion
 
         public async Task IPInitialConnection(IPEndPoint ep, ConnectionNotification connectionInfo)
-        {
-            var tempId = Guid.NewGuid();
-            DataStore.NodeMap.Add(tempId, ep);
-            await SendUDP(tempId, connectionInfo);
+        {            
+            await SendUDP(ep, connectionInfo);
             UDPListen = true;
         }
 
@@ -115,20 +120,34 @@ namespace P2PProject.Client
             else if(item is ConnectionNotification notification)
             {
                 Console.WriteLine($"New node added to network \n ID: {notification.SenderId} \n  EP: {notification.ConnectionInformation.Address}:{notification.ConnectionInformation.Port}");
-                DataStore.NodeMap.Add(notification.SenderId, senderEP);
-                Console.WriteLine("Node added to store \n returning network information and data");
-
-                var syncNotification = new InitialDataNotification
+                if(!DataStore.NodeMap.ContainsKey(notification.Id))
                 {
-                    Id = Guid.NewGuid(),
-                    NetworkData = DataStore.NetworkData,
-                    NodeMap = DataStore.NodeMap.Where(x => x.Key != notification.SenderId)
-                                               .ToDictionary(pair => pair.Key, pair => pair.Value),
-                };
-                //Return data and port to new node
-                await SendUDP(notification.SenderId, syncNotification);
-                Console.WriteLine("Notified New node of accepted connection and returned available port");
+                    senderEP.Port = notification.Port;
+                    DataStore.NodeMap.Add(notification.SenderId, senderEP.ToEndpoint());
+                    Console.WriteLine("Node added to store \n returning network information and data");
+                }
+                //If Already connected notification?
 
+                if (notification.SendData)
+                {
+                    var modNodeMap = DataStore.NodeMap.Where(x => x.Key != notification.SenderId)
+                                              .ToDictionary(pair => pair.Key, pair => pair.Value);
+                                              
+                    modNodeMap.Add(LocalClientInfo.ClientId, new Models.EndPoint(LocalClientInfo.LocalClientIP, LocalClientInfo.Port));
+
+                    var syncNotification = new InitialDataNotification
+                    {
+                        Id = Guid.NewGuid(),
+                        NetworkData = DataStore.NetworkData,
+                        NodeMap = modNodeMap,
+                        SenderId = LocalClientInfo.ClientId,
+                        Timestamp = DateTime.UtcNow,
+                    };
+
+                    //Return data and port to new node
+                    await SendUDP(notification.SenderId, syncNotification);
+                    Console.WriteLine("Notified New node of accepted connection");
+                }
             }
             else if(item is InitialDataNotification dataNotification)
             {
@@ -145,20 +164,18 @@ namespace P2PProject.Client
                 }
                 Console.WriteLine($"Data sync'd from node {dataNotification.SenderId}");
 
-                //Get available port for communications, freeing up connection port
-                var freePortForNode = GetPortForNewNode();
-                LocalClientInfo.Port = freePortForNode;
-
                 var connectionMessage = new ConnectionNotification
                 {
                     IP = LocalClientInfo.LocalClientIP.ToString(),
-                    Port = freePortForNode,
+                    Port = LocalClientInfo.Port,
                     Id = Guid.NewGuid(),
-                    SenderId = LocalClientInfo.ClientId
+                    SenderId = LocalClientInfo.ClientId,
+                    SendData = false,
+                    Timestamp = DateTime.UtcNow
                 };
 
                 //Notify other nodes of new connection
-                await SendUDPToAllNodes(DataStore.NodeMap.Select(x => x.Key).ToList(), connectionMessage);
+                await SendUDPToAllNodes(DataStore.NodeMap.Where(x => x.Key != dataNotification.SenderId).Select(x => x.Key).ToList(), connectionMessage);
                 Console.WriteLine("Notified all other nodes of new connection");
             }
         }
@@ -170,7 +187,7 @@ namespace P2PProject.Client
         public void InitialiseNode()
         {
             LocalClientInfo.Port = GetPortForNewNode();
-            LocalClientInfo.LocalClientIP = NetworkExtensions.GetLocalIPAddress();
+            LocalClientInfo.LocalClientIP = NetworkExtensions.GetLocalIPAddress().ToString();
             LocalClientInfo.ClientId = Guid.NewGuid();
             UDPListen = true;
             RecieveUDP(LocalClientInfo.Port);

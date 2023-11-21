@@ -9,7 +9,7 @@ namespace P2PProject.Client.Models
 {
     public static class DataStore
     {
-        public static Dictionary<Guid, IPEndPoint> NodeMap { get; set; } = new();
+        public static Dictionary<Guid, EndPoint> NodeMap { get; set; } = new();
         public static Dictionary<Guid, ISendableItem> NetworkData { get; set; } = new();
     }
 }

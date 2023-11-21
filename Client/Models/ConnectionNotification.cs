@@ -10,6 +10,7 @@ namespace P2PProject.Client.Models
         public string IP { get; set; }
         public int Port { get; set; }
         public DateTime? Timestamp { get; set; }
+        public bool SendData { get; set; }
 
         [JsonIgnore]
         public IPEndPoint ConnectionInformation => new IPEndPoint(IPAddress.Parse(IP), Port);
