@@ -1,4 +1,5 @@
-﻿using System.Net;
+﻿using P2PProject.Client.Models;
+using System.Net;
 using System.Net.Sockets;
 
 namespace P2PProject.Client.Extensions
@@ -18,6 +19,6 @@ namespace P2PProject.Client.Extensions
             throw new Exception("No network adapters with an IPv4 address in the system!");
         }
 
-        public static Models.EndPoint ToEndpoint(this IPEndPoint ep) => new Models.EndPoint(ep.Address.ToString(), ep.Port);
+        public static NodeInfo ToNodeInfo(this IPEndPoint ep, Guid id) => new NodeInfo(ep.Address.ToString(), ep.Port, id);
     }
 }

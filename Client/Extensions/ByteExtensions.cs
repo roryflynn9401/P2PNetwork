@@ -1,4 +1,5 @@
 ﻿using Newtonsoft.Json;
+using P2PProject.Client.EventHandlers;
 using System.Text;
 using System.Text.Json;
 
@@ -6,8 +7,6 @@ namespace P2PProject.Client.Extensions
 {
     public static class ByteExtensions
     {
-        public static event EventHandler MalformedData;
-
         private static JsonSerializerSettings _serializationSettings = new JsonSerializerSettings
         {
             TypeNameHandling = TypeNameHandling.Objects,
@@ -20,18 +19,21 @@ namespace P2PProject.Client.Extensions
             return Encoding.UTF8.GetBytes(jsonString);
         }
 
-        public static T DecodeByteArray<T>(byte[] bytes)
+        public static T? DecodeByteArray<T>(byte[] bytes)
         {
             string data = Encoding.UTF8.GetString(bytes);
-            var obj = JsonConvert.DeserializeObject<T>(data, _serializationSettings);
-
-            if (obj == null)
+            try
             {
-                MalformedData.Invoke(typeof(ByteExtensions), EventArgs.Empty);
-                //Event to Report malformed data needs implementation and subscribers
-            }
+                var obj = JsonConvert.DeserializeObject<T>(data, _serializationSettings);
+                if (obj != null) return obj;
 
-            return obj!; // Assuming for now data is correct
-        }
+                Console.WriteLine("Malformed Data detected! \n Requesting network synchronization");                    
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine(ex.ToString());
+            }
+            return default;
+        }        
     }
 }
