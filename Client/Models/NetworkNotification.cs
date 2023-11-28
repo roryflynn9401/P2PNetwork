@@ -11,6 +11,9 @@ namespace P2PProject.Client.Models
         NetworkShutdown = 1,
         Disconnection = 2,
         Sync = 3,
+        Ping = 4,
+        PingAck = 5,
+        InvalidPort = 6,
     }
     public class NetworkNotification : ISendableItem
     {

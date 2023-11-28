@@ -11,7 +11,7 @@ namespace P2PProject
     {
         public enum SendTypes { String = 1, Notification = 2,};
 
-        private static List<string> _commands = new() { "Connect to network via IP", "Connect to network via discovery service", "Initalise Network", "Add Data", "View Nodes on Network", "View Data", "Disconnect from network", "Generate malformed data" };
+        private static List<string> _commands = new() { "Connect to network via IP", "Connect to network via discovery service", "Initalise Network", "Add Data", "View Nodes on Network", "View Data", "Disconnect from network", "Generate malformed data", "Check for inactive nodes" };
         private static bool _quit = false;
         private static Node _localClient = new();
         private static Action _inputError = () => { Console.WriteLine("Input not recognised, returning to menu\n");};
@@ -131,14 +131,14 @@ namespace P2PProject
                             Console.WriteLine("Nodes currently on the network:");
                             foreach(var node in DataStore.NodeMap.Select(x => x.Value))
                             {
-                                Console.WriteLine($"{node.LocalNodeIP}:{node.Port}");
+                                Console.WriteLine($"{node.ClientName}  {node.LocalNodeIP}:{node.Port}");
                             }
                             break;
                         case 6:
                             Console.WriteLine("Data currently stored:");
                             foreach (var dataPair in DataStore.NetworkData.OrderBy(x => x.GetType()))
                             {
-                                Console.WriteLine($"{dataPair.Key}: {dataPair.GetType().Name}");
+                                Console.WriteLine($"{dataPair.Key}: {dataPair.Value.GetType().Name}");
                             }
                             break;
                         case 7:
@@ -158,6 +158,10 @@ namespace P2PProject
 
                             var sendData = ByteExtensions.GetByteArray(data);
                             await _localClient.SendMalformedUDP(sendData.Take(sendData.Length / 2).ToArray(), DataStore.NodeMap.First().Value.LocalIPEndPoint);
+                            break;
+                        case 9:
+                            _localClient.PingService = new PingService(_localClient);
+                            await _localClient.PingService.InitaliseSync();                            
                             break;
                         default:
                             _inputError.Invoke();

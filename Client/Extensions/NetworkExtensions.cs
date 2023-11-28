@@ -19,6 +19,6 @@ namespace P2PProject.Client.Extensions
             throw new Exception("No network adapters with an IPv4 address in the system!");
         }
 
-        public static NodeInfo ToNodeInfo(this IPEndPoint ep, Guid id) => new NodeInfo(ep.Address.ToString(), ep.Port, id);
+        public static NodeInfo ToNodeInfo(this IPEndPoint ep, Guid id, string nodeName) => new NodeInfo(ep.Address.ToString(), ep.Port, id, nodeName);
     }
 }

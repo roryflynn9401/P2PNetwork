@@ -12,7 +12,9 @@ namespace P2PProject.Client
         private Thread UDPListenerThread;
         public NodeInfo LocalClientInfo { get; set; } = new();
         public bool UDPListen { get; set; }
-        
+        public DataSyncService? SyncService;
+        public PingService? PingService;
+
         public event EventHandler<MessageEventArgs> MessageReceived;
         public event EventHandler<ConnectionEventArgs> NodeConnected;
         public event EventHandler<ConnectionEventArgs> NetworkConnect;
@@ -47,15 +49,15 @@ namespace P2PProject.Client
                         }
                         else
                         {
-                            SyncService.InitialiseSync(this);
+                            SyncService = new DataSyncService(this);
+                            await SyncService.InitaliseSync();
                             Console.WriteLine("Sync Initalised, this may take up to 15s...\n");
                         }
                     }
                 }
                 catch(SocketException se)
                 {
-                    //Port likely in use, retry print error for now
-                    Console.WriteLine(se.ToString());
+                    RetryDifferentPort();
                 }
                 catch (Exception e)
                 {
@@ -184,6 +186,7 @@ namespace P2PProject.Client
                 }
                 else
                 {
+                    if (SyncService == null) return;                  
                     SyncService.SyncNotifications.Add(dataSyncNotification);
                 }
                 
@@ -209,8 +212,8 @@ namespace P2PProject.Client
             Console.WriteLine($"New node added to network \n Name: {notification.NodeName} \n ID: {senderId} \n  EP: {notification.ConnectionInformation.Address}:{notification.ConnectionInformation.Port}");
             if (!DataStore.NodeMap.ContainsKey(senderId) && senderId != LocalClientInfo.ClientId)
             {
-                DataStore.NodeMap.Add(senderId, notification.ConnectionInformation.ToNodeInfo(senderId));
-                Console.WriteLine("Node added to store \n returning network information and data\n");
+                DataStore.NodeMap.Add(senderId, notification.ConnectionInformation.ToNodeInfo(senderId, notification.NodeName));
+                Console.WriteLine("Node added to store \n");
             }
 
             if (notification.SendData)
@@ -237,17 +240,9 @@ namespace P2PProject.Client
 
         private async Task ProcessInitialDataSync(InitialDataNotification dataNotification)
         {
-            foreach (var node in dataNotification.NodeMap)
-            {
-                if (!node.Key.Equals(LocalClientInfo.ClientId))
-                {
-                    DataStore.NodeMap.TryAdd(node.Key, node.Value);
-                }
-            }
-            foreach (var data in dataNotification.NetworkData)
-            {
-                DataStore.NetworkData.TryAdd(data.Key, data.Value);
-            }
+            DataStore.NodeMap = dataNotification.NodeMap;
+            DataStore.NetworkData = dataNotification.NetworkData;
+
             Console.WriteLine($"Data sync'd from node {dataNotification.SenderId}\n");
 
             var connectionMessage = new ConnectionNotification
@@ -298,6 +293,30 @@ namespace P2PProject.Client
                         Console.WriteLine($"Network sync requested by node {node.ClientName}\n");
                         await SendUDP(networkNotification.SenderId, dataSync);
                         break;
+                    case NotificationType.Ping:
+                        var ack = new NetworkNotification
+                        {
+                            Id = Guid.NewGuid(),
+                            SenderId = LocalClientInfo.ClientId,
+                            Timestamp = DateTime.UtcNow,
+                            Type = NotificationType.PingAck
+                        };
+
+                        Console.WriteLine($"Ping received by {node.ClientName}, sending ACK");
+                        await SendUDP(node.ClientId, ack);
+
+                        break;
+                    case NotificationType.PingAck:
+                        if (PingService == null) return;
+                        PingService.PingAckNotifications.Add(networkNotification);
+                        break;
+                    case NotificationType.InvalidPort:
+                        if(DataStore.NodeMap.Count == 0)
+                        {
+                            RetryDifferentPort();
+                        }
+
+                        break;
                     default:
                         break;
                 };
@@ -334,6 +353,15 @@ namespace P2PProject.Client
                 }
             }
             return 0;
+        }
+
+        private void RetryDifferentPort()
+        {
+            //Port likely in use, get new port and retry
+            var newPort = GetPortForNewNode();
+            Console.WriteLine($"Port {LocalClientInfo.Port} is unavailable, switching to port {newPort}\nAttempt connection again.");
+            LocalClientInfo.Port = newPort;
+            RecieveUDP(LocalClientInfo.Port);
         }
 
         protected virtual void OnMessageReceived(MessageEventArgs e) => OnEventOccured(e, MessageReceived);
