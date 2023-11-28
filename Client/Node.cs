@@ -45,6 +45,11 @@ namespace P2PProject.Client
                         {
                             await ProcessItem(returnData, RemoteIpEndPoint);
                         }
+                        else
+                        {
+                            SyncService.InitialiseSync(this);
+                            Console.WriteLine("Sync Initalised, this may take up to 15s...\n");
+                        }
                     }
                 }
                 catch(SocketException se)
@@ -66,7 +71,7 @@ namespace P2PProject.Client
             {    
                 if (DataStore.NodeMap.TryGetValue(recipientId, out NodeInfo? send))
                 {
-                    Console.WriteLine($"Sending data to node {send.ClientName} {send.LocalNodeIP}:{send.Port}");
+                    Console.WriteLine($"Sending data to node {send.ClientName} {send.LocalNodeIP}:{send.Port}\n");
                     await SendUDP(send.LocalIPEndPoint, item);
                 }
                     
@@ -93,6 +98,12 @@ namespace P2PProject.Client
             var tasks = new List<Task>();
             ids.ForEach(x => tasks.Add(SendUDP(x, item)));
             await Task.WhenAll(tasks);
+        }
+
+        public async Task SendMalformedUDP(byte[] data, IPEndPoint? ep = null)
+        {
+            using var client = new UdpClient();       
+            await client.SendAsync(data, data.Length, ep ?? LocalClientInfo.LocalIPEndPoint);
         }
 
         public async Task SyncNetwork()
@@ -127,7 +138,7 @@ namespace P2PProject.Client
                 Type = NotificationType.Disconnection,
             };
 
-            DataStore.ClearForDisconnect();
+            DataStore.ClearAllData();
             await SendUDPToNodes(DataStore.NodeMap.Select(x => x.Key).ToList(), disconnectionNotification);                           
         }
 
@@ -159,9 +170,27 @@ namespace P2PProject.Client
             {
                 await ProcessNetworkNotification(networkNotification);
             }
+            else if(item is DataSyncNotification dataSyncNotification)
+            {
+                if (!dataSyncNotification.IsSyncingNode)
+                {
+                    Console.WriteLine("Rebuilding data stores from network sync\n");
+                    DataStore.ClearAllData();
+                    dataSyncNotification.NodeMap.Remove(LocalClientInfo.ClientId);
+                    DataStore.NodeMap = dataSyncNotification.NodeMap;
+                    DataStore.NetworkData = dataSyncNotification.NetworkData;
+
+                    Console.WriteLine($"Data store rebuilt \n Connected Nodes: {DataStore.NodeMap.Count} \n Data Items: {DataStore.NetworkData.Count}\n");
+                }
+                else
+                {
+                    SyncService.SyncNotifications.Add(dataSyncNotification);
+                }
+                
+            }
         }
 
-        #region Process methods for readability
+        #region Readability Methods 
 
         private void ProcessStringNotification(StringNotification message)
         {
@@ -170,18 +199,18 @@ namespace P2PProject.Client
                 Console.WriteLine($"Data recieved from {message.SenderId}");
                 Console.WriteLine($"Message Content: {message.Content}"); ;
                 DataStore.NetworkData.Add(message.Id, message);
-                Console.WriteLine($"Item {message.Id} stored");
+                Console.WriteLine($"Item {message.Id} stored\n");
             }
         }
 
         private async Task ProcessConnectionNotification(ConnectionNotification notification)
         {
             var senderId = notification.SenderId;
-            Console.WriteLine($"New node added to network Name: {notification.NodeName} \n ID: {senderId} \n  EP: {notification.ConnectionInformation.Address}:{notification.ConnectionInformation.Port}");
-            if (!DataStore.NodeMap.ContainsKey(senderId))
+            Console.WriteLine($"New node added to network \n Name: {notification.NodeName} \n ID: {senderId} \n  EP: {notification.ConnectionInformation.Address}:{notification.ConnectionInformation.Port}");
+            if (!DataStore.NodeMap.ContainsKey(senderId) && senderId != LocalClientInfo.ClientId)
             {
                 DataStore.NodeMap.Add(senderId, notification.ConnectionInformation.ToNodeInfo(senderId));
-                Console.WriteLine("Node added to store \n returning network information and data");
+                Console.WriteLine("Node added to store \n returning network information and data\n");
             }
 
             if (notification.SendData)
@@ -202,7 +231,7 @@ namespace P2PProject.Client
 
                 //Return data to new node
                 await SendUDP(notification.SenderId, syncNotification);
-                Console.WriteLine("Notified New node of accepted connection and returned network data");
+                Console.WriteLine("Notified New node of accepted connection and returned network data\n");
             }
         }
 
@@ -219,7 +248,7 @@ namespace P2PProject.Client
             {
                 DataStore.NetworkData.TryAdd(data.Key, data.Value);
             }
-            Console.WriteLine($"Data sync'd from node {dataNotification.SenderId}");
+            Console.WriteLine($"Data sync'd from node {dataNotification.SenderId}\n");
 
             var connectionMessage = new ConnectionNotification
             {
@@ -235,32 +264,48 @@ namespace P2PProject.Client
             Program.Connected = true;
             //Notify other nodes of new connection
             await SendUDPToNodes(DataStore.NodeMap.Where(x => x.Key != dataNotification.SenderId).Select(x => x.Key).ToList(), connectionMessage);
-            Console.WriteLine("Notified all other nodes of connection");
+            Console.WriteLine("Notified all other nodes of connection\n");
         }
 
         private async Task ProcessNetworkNotification(NetworkNotification networkNotification)
         {
-            switch (networkNotification.Type)
+            if (DataStore.NodeMap.TryGetValue(networkNotification.SenderId, out var node))
             {
-                case NotificationType.Disconnection:
-                    OnNodeDisconnect(new NetworkEventArgs(LocalClientInfo.ClientId, networkNotification));
-                    if (DataStore.NodeMap.TryGetValue(networkNotification.SenderId, out var node))
-                    {
-                        Console.WriteLine($"Node {node.ClientName} disconnected from network");
-                        DataStore.NodeMap.Remove(node.ClientId);
-                    }
-                    break;
-                case NotificationType.NetworkShutdown:
-                    OnNetworkShutdown(new NetworkEventArgs(LocalClientInfo.ClientId, networkNotification));
-                    break;
-                case NotificationType.Sync:
-                    break;
-                default:
-                    break;
-            };
+                switch (networkNotification.Type)
+                {
+                    case NotificationType.Disconnection:
+                        OnNodeDisconnect(new NetworkEventArgs(LocalClientInfo.ClientId, networkNotification));
+
+                            Console.WriteLine($"Node {node.ClientName} disconnected from network\n");
+                            DataStore.NodeMap.Remove(node.ClientId);
+                    
+                        break;
+                    case NotificationType.NetworkShutdown:
+                        OnNetworkShutdown(new NetworkEventArgs(LocalClientInfo.ClientId, networkNotification));
+                        break;
+                    case NotificationType.Sync:
+                        var nodeMap = DataStore.NodeMap;
+
+                        var dataSync = new DataSyncNotification
+                        {
+                            Id = Guid.NewGuid(),
+                            SenderId = LocalClientInfo.ClientId,
+                            NetworkData = DataStore.NetworkData,
+                            NodeMap = nodeMap,
+                            Timestamp = DateTime.UtcNow,
+                            IsSyncingNode = true,
+                        };
+                        Console.WriteLine($"Network sync requested by node {node.ClientName}\n");
+                        await SendUDP(networkNotification.SenderId, dataSync);
+                        break;
+                    default:
+                        break;
+                };
+            }
         }
 
         #endregion
+        
         #endregion
 
         #region Helpers

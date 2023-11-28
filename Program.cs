@@ -11,10 +11,10 @@ namespace P2PProject
     {
         public enum SendTypes { String = 1, Notification = 2,};
 
-        private static List<string> _commands = new() { "Connect to network via IP", "Connect to network via discovery service", "Initalise Network", "Add Data", "View Nodes on Network", "View Data", "Disconnect from network" };
+        private static List<string> _commands = new() { "Connect to network via IP", "Connect to network via discovery service", "Initalise Network", "Add Data", "View Nodes on Network", "View Data", "Disconnect from network", "Generate malformed data" };
         private static bool _quit = false;
         private static Node _localClient = new();
-        private static Action _inputError = () => { Console.WriteLine("Input not recognised, returning to menu");};
+        private static Action _inputError = () => { Console.WriteLine("Input not recognised, returning to menu\n");};
         public static bool Connected = false; 
 
         public static async Task Main(string[] args)
@@ -22,7 +22,7 @@ namespace P2PProject
             //Set client information
             NotificationHandler _notificationHandler = new(_localClient);
             _localClient.InitialiseNode();
-            Console.WriteLine($"Your information is {_localClient.LocalClientInfo.LocalNodeIP}:{_localClient.LocalClientInfo.Port}");
+            Console.WriteLine($"Your information is {_localClient.LocalClientInfo.LocalNodeIP}:{_localClient.LocalClientInfo.Port}\n");
             Console.WriteLine("Set the nodes nickname");
 
             var nickname = Console.ReadLine();
@@ -31,7 +31,7 @@ namespace P2PProject
 
             while (!_quit)
             {
-                Console.WriteLine("Hello! Here are the supported features:");
+                Console.WriteLine("Hello! Here are the supported features:\n");
                 for(int i = 0; i < _commands.Count; i++)
                 {
                     var isConnected = Connected && connectedInvalid.Contains(i) ? "- ALREADY CONNECTED" : ""; 
@@ -44,7 +44,7 @@ namespace P2PProject
                         case 1:
                             if (Connected)
                             {
-                                Console.WriteLine("You are already connected to a network"); 
+                                Console.WriteLine("You are already connected to a network\n"); 
                                 break;
                             }
 
@@ -145,6 +145,19 @@ namespace P2PProject
                             Console.WriteLine("Disconnecting from network...");
                             await _localClient.DisconnectFromNetwork();
                             _quit = true;
+                            break;
+                        case 8:
+                            var data = new StringNotification
+                            {
+                                Id = Guid.NewGuid(),
+                                Content = string.Empty,
+                                SenderId = _localClient.LocalClientInfo.ClientId,
+                                Timestamp = DateTime.Now,
+                            };
+                            DataStore.NetworkData.Add(data.Id, data);
+
+                            var sendData = ByteExtensions.GetByteArray(data);
+                            await _localClient.SendMalformedUDP(sendData.Take(sendData.Length / 2).ToArray(), DataStore.NodeMap.First().Value.LocalIPEndPoint);
                             break;
                         default:
                             _inputError.Invoke();

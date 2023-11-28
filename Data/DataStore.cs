@@ -10,7 +10,7 @@ namespace P2PProject.Data
 
         public static void ClearData() => NetworkData.Clear();
         public static void ClearNodeList() => NodeMap.Clear();
-        public static void ClearForDisconnect()
+        public static void ClearAllData()
         {
             ClearData();
             ClearNodeList();

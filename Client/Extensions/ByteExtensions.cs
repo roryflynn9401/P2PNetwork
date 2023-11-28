@@ -1,5 +1,6 @@
 ﻿using Newtonsoft.Json;
 using P2PProject.Client.EventHandlers;
+using P2PProject.Data;
 using System.Text;
 using System.Text.Json;
 
@@ -25,14 +26,13 @@ namespace P2PProject.Client.Extensions
             try
             {
                 var obj = JsonConvert.DeserializeObject<T>(data, _serializationSettings);
-                if (obj != null) return obj;
-
-                Console.WriteLine("Malformed Data detected! \n Requesting network synchronization");                    
+                if (obj != null) return obj;    
             }
-            catch (Exception ex)
+            catch 
             {
-                Console.WriteLine(ex.ToString());
+                Console.WriteLine("Malformed Data detected! \nRequesting network synchronization\n");
             }
+
             return default;
         }        
     }
