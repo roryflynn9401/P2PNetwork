@@ -6,17 +6,16 @@ namespace P2PProject.Client.Extensions
 {
     public static class NetworkExtensions
     {        
-        public static IPAddress GetLocalIPAddress()
+        public static IEnumerable<IPAddress> GetLocalIPAddress()
         {
             var host = Dns.GetHostEntry(Dns.GetHostName());
             foreach (var ip in host.AddressList)
             {
                 if (ip.AddressFamily == AddressFamily.InterNetwork)
                 {
-                    return ip;
+                    yield return ip;
                 }
-            }
-            throw new Exception("No network adapters with an IPv4 address in the system!");
+            }   
         }
 
         public static NodeInfo ToNodeInfo(this IPEndPoint ep, Guid id, string nodeName) => new NodeInfo(ep.Address.ToString(), ep.Port, id, nodeName);

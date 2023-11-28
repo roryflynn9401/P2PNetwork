@@ -61,11 +61,11 @@
   "project": {
     "version": "1.0.0",
     "restore": {
-      "projectUniqueName": "C:\\Users\\RoryF\\source\\repos\\P2PProject\\P2PProject.csproj",
+      "projectUniqueName": "C:\\Users\\RoryF\\source\\repos\\P2PNetwork\\P2PProject.csproj",
       "projectName": "P2PProject",
-      "projectPath": "C:\\Users\\RoryF\\source\\repos\\P2PProject\\P2PProject.csproj",
+      "projectPath": "C:\\Users\\RoryF\\source\\repos\\P2PNetwork\\P2PProject.csproj",
       "packagesPath": "C:\\Users\\RoryF\\.nuget\\packages\\",
-      "outputPath": "C:\\Users\\RoryF\\source\\repos\\P2PProject\\obj\\",
+      "outputPath": "C:\\Users\\RoryF\\source\\repos\\P2PNetwork\\obj\\",
       "projectStyle": "PackageReference",
       "fallbackFolders": [
         "C:\\Program Files (x86)\\Microsoft Visual Studio\\Shared\\NuGetPackages"
@@ -120,7 +120,7 @@
             "privateAssets": "all"
           }
         },
-        "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\7.0.401\\RuntimeIdentifierGraph.json"
+        "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\7.0.302\\RuntimeIdentifierGraph.json"
       }
     }
   }

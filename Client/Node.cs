@@ -332,7 +332,30 @@ namespace P2PProject.Client
         public void InitialiseNode()
         {
             LocalClientInfo.Port = GetPortForNewNode();
-            LocalClientInfo.LocalNodeIP = NetworkExtensions.GetLocalIPAddress().ToString();
+
+            var ips = NetworkExtensions.GetLocalIPAddress().ToArray();
+            if(ips.Length > 1)
+            {
+                var ipSelected = false;
+                while (!ipSelected)
+                {
+                    Console.WriteLine("Multiple IP Addresses found, please select the IP address you wish to use:");
+                    for (int i = 0; i < ips.Length; i++)
+                    {
+                        Console.WriteLine($"{i + 1}. {ips.ElementAt(i)}");
+                    }
+                    var selectedIp = Console.ReadLine();
+                    if (int.TryParse(selectedIp, out int ipIndex))
+                    {
+                        LocalClientInfo.LocalNodeIP = ips.ElementAt(ipIndex - 1).ToString();
+                        ipSelected = true;
+                    }
+                }
+            }
+            else
+            {
+                LocalClientInfo.LocalNodeIP = ips.First().ToString();
+            }
             LocalClientInfo.ClientId = Guid.NewGuid();
             UDPListen = true;
             RecieveUDP(LocalClientInfo.Port);
