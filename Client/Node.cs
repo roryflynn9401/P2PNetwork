@@ -140,8 +140,8 @@ namespace P2PProject.Client
                 Type = NotificationType.Disconnection,
             };
 
-            DataStore.ClearAllData();
             await SendUDPToNodes(DataStore.NodeMap.Select(x => x.Key).ToList(), disconnectionNotification);                           
+            DataStore.ClearAllData();
         }
 
 
