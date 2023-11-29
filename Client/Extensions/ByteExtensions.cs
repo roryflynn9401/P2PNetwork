@@ -1,6 +1,7 @@
 ﻿using Newtonsoft.Json;
 using P2PProject.Client.EventHandlers;
 using P2PProject.Data;
+using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 
@@ -28,12 +29,18 @@ namespace P2PProject.Client.Extensions
                 var obj = JsonConvert.DeserializeObject<T>(data, _serializationSettings);
                 if (obj != null) return obj;    
             }
-            catch 
-            {
-                Console.WriteLine("Malformed Data detected! \nRequesting network synchronization\n");
-            }
+            catch {            }
 
             return default;
-        }        
+        }
+        
+        public static string GetChecksumString(this byte[] bytes)
+        {
+            using (var md5 = MD5.Create())
+            {
+                var byteChecksum = md5.ComputeHash(bytes);
+                return Encoding.UTF8.GetString(byteChecksum);
+            }
+        }
     }
 }

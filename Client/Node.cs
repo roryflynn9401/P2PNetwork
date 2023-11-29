@@ -12,8 +12,10 @@ namespace P2PProject.Client
         private Thread UDPListenerThread;
         public NodeInfo LocalClientInfo { get; set; } = new();
         public bool UDPListen { get; set; }
+        public bool TransferringFile { get; set; }
         public DataSyncService? SyncService;
         public PingService? PingService;
+        public UDPFileTransferClient? FileTransferClient;
 
         public event EventHandler<MessageEventArgs> MessageReceived;
         public event EventHandler<ConnectionEventArgs> NodeConnected;
@@ -41,23 +43,36 @@ namespace P2PProject.Client
                     while (UDPListen)
                     {
                         var receiveBytes = receivingUdpClient.Receive(ref RemoteIpEndPoint);
+                        var returnData = TransferringFile ? null : ByteExtensions.DecodeByteArray<ISendableItem>(receiveBytes);
 
-                        var returnData = ByteExtensions.DecodeByteArray<ISendableItem>(receiveBytes);
                         if (returnData != null && returnData != default(ISendableItem))
                         {
                             await ProcessItem(returnData, RemoteIpEndPoint);
                         }
                         else
                         {
-                            SyncService = new DataSyncService(this);
-                            await SyncService.InitaliseSync();
-                            Console.WriteLine("Sync Initalised, this may take up to 15s...\n");
+                            var ftData = ByteExtensions.DecodeByteArray<IPacket>(receiveBytes);
+                            if (ftData != null && ftData != default(IPacket))
+                            {
+                                FileTransferClient ??= new UDPFileTransferClient(this);
+                                await FileTransferClient.ProcessData(ftData);
+                            }
+                            else if(!TransferringFile)
+                            {
+                                SyncService = new DataSyncService(this);
+                                await SyncService.InitaliseSync();
+                                Console.WriteLine("Sync Initalised, this may take up to 15s...\n");
+                            }
                         }
                     }
                 }
                 catch(SocketException se)
                 {
                     RetryDifferentPort();
+                }
+                catch(ThreadInterruptedException ti)
+                {
+                    receivingUdpClient.Dispose();
                 }
                 catch (Exception e)
                 {

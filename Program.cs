@@ -3,6 +3,7 @@ using P2PProject.Client.EventHandlers;
 using P2PProject.Client.Extensions;
 using P2PProject.Client.Models;
 using P2PProject.Data;
+using System.Collections.Concurrent;
 using System.Net;
 
 namespace P2PProject
@@ -10,12 +11,12 @@ namespace P2PProject
     public static class Program
     {
         public enum SendTypes { String = 1, Notification = 2,};
+        public static bool Connected = false; 
 
-        private static List<string> _commands = new() { "Connect to network via IP", "Connect to network via discovery service", "Initalise Network", "Add Data", "View Nodes on Network", "View Data", "Disconnect from network", "Generate malformed data", "Check for inactive nodes" };
+        private static List<string> _commands = new() { "Connect to network via IP", "Connect to network via discovery service", "Initalise Network", "Add Data", "View Nodes on Network", "View Data", "Disconnect from network", "Generate malformed data", "Check for inactive nodes", "Transfer File" };
         private static bool _quit = false;
         private static Node _localClient = new();
         private static Action _inputError = () => { Console.WriteLine("Input not recognised, returning to menu\n");};
-        public static bool Connected = false; 
 
         public static async Task Main(string[] args)
         {
@@ -29,30 +30,42 @@ namespace P2PProject
             _localClient.LocalClientInfo.ClientName = nickname ?? string.Empty;
             var connectedInvalid = new[] { 0, 1 };
 
-            while (!_quit)
+            Action _printNodes = () =>
             {
-                Console.WriteLine("Hello! Here are the supported features:\n");
-                for(int i = 0; i < _commands.Count; i++)
+                Console.WriteLine("Nodes currently on the network:");
+                int i = 1;
+                foreach (var node in DataStore.NodeMap.Select(x => x.Value))
                 {
-                    var isConnected = Connected && connectedInvalid.Contains(i) ? "- ALREADY CONNECTED" : ""; 
-                    Console.WriteLine($"{i+1}. {_commands[i]} {isConnected}");
+                    Console.WriteLine($"{i}. {node.ClientName}  {node.LocalNodeIP}:{node.Port}");
+                    i++;
                 }
-                if(int.TryParse(Console.ReadLine(), out int command))
+            };
+
+            while (!_quit)
+            { 
+
+                Console.WriteLine("Hello! Here are the supported features:\n");
+                for (int i = 0; i < _commands.Count; i++)
                 {
-                    switch(command)
+                    var isConnected = Connected && connectedInvalid.Contains(i) ? "- ALREADY CONNECTED" : "";
+                    Console.WriteLine($"{i + 1}. {_commands[i]} {isConnected}");
+                }
+                if (int.TryParse(Console.ReadLine(), out int command))
+                {
+                    switch (command)
                     {
                         case 1:
                             if (Connected)
                             {
-                                Console.WriteLine("You are already connected to a network\n"); 
+                                Console.WriteLine("You are already connected to a network\n");
                                 break;
                             }
 
                             Console.WriteLine("Enter the IP of a node on the network");
-                            if(IPAddress.TryParse(Console.ReadLine(), out IPAddress? ipAddress))
+                            if (IPAddress.TryParse(Console.ReadLine(), out IPAddress? ipAddress))
                             {
                                 Console.WriteLine("Enter the Port of the node");
-                                if(int.TryParse(Console.ReadLine(), out int port))
+                                if (int.TryParse(Console.ReadLine(), out int port))
                                 {
                                     var connectEndpoint = new IPEndPoint(ipAddress, port);
                                     Console.WriteLine($"Attempting connection to {ipAddress}:{port}");
@@ -68,7 +81,7 @@ namespace P2PProject
                                     };
 
                                     await _localClient.IPInitialConnection(connectEndpoint, connectionMessage);
-                                    Console.WriteLine("Connection request made, waiting for response...");                                    
+                                    Console.WriteLine("Connection request made, waiting for response...");
 
                                 }
                                 else
@@ -78,13 +91,13 @@ namespace P2PProject
                                 }
                             }
                             else
-                            { 
-                                _inputError.Invoke(); 
-                                continue; 
+                            {
+                                _inputError.Invoke();
+                                continue;
                             }
                             break;
 
-                        case 2: 
+                        case 2:
                             break;
 
                         case 3:
@@ -94,14 +107,14 @@ namespace P2PProject
                         case 4:
                             Console.WriteLine("What kind of data do you want to add?");
                             int i = 1;
-                            foreach(var type in Enum.GetNames(typeof(SendTypes)))
+                            foreach (var type in Enum.GetNames(typeof(SendTypes)))
                             {
                                 Console.WriteLine($"{i}. {type}");
                                 i++;
                             }
                             if (int.TryParse(Console.ReadLine(), out int messageType))
                             {
-                               switch(messageType)
+                                switch (messageType)
                                 {
                                     case 1:
                                         Console.WriteLine("What is the string content?");
@@ -124,15 +137,11 @@ namespace P2PProject
                                         }
                                         break;
                                 }
-                               
+
                             }
                             break;
                         case 5:
-                            Console.WriteLine("Nodes currently on the network:");
-                            foreach(var node in DataStore.NodeMap.Select(x => x.Value))
-                            {
-                                Console.WriteLine($"{node.ClientName}  {node.LocalNodeIP}:{node.Port}");
-                            }
+                            _printNodes.Invoke();
                             break;
                         case 6:
                             Console.WriteLine("Data currently stored:");
@@ -161,7 +170,24 @@ namespace P2PProject
                             break;
                         case 9:
                             _localClient.PingService = new PingService(_localClient);
-                            await _localClient.PingService.InitaliseSync();                            
+                            await _localClient.PingService.InitaliseSync();
+                            break;
+                        case 10:
+                            Console.WriteLine("Enter the name or path of the file you want");
+                            var fileName = Console.ReadLine();
+                            Console.WriteLine("Enter the location you want to save the file in");
+                            var fileLocation = Console.ReadLine();
+                            if (fileName != null)
+                            {
+                                var request = new RequestPacket
+                                {
+                                    Id = Guid.NewGuid(),
+                                    SenderId = _localClient.LocalClientInfo.ClientId,
+                                    FileName = fileName,
+                                };
+                                _localClient.FileTransferClient = new UDPFileTransferClient(_localClient, fileLocation);
+                                await _localClient.FileTransferClient.SendUDPToNodes(DataStore.NodeMap.Select(x => x.Key).ToList(), request);
+                            }
                             break;
                         default:
                             _inputError.Invoke();
@@ -173,6 +199,7 @@ namespace P2PProject
                     _inputError.Invoke();
                     continue;
                 }
+                
 
             }           
         }

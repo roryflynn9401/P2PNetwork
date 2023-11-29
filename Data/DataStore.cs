@@ -15,5 +15,7 @@ namespace P2PProject.Data
             ClearData();
             ClearNodeList();
         }
+
+        public static string GetNodeName(Guid id) => NodeMap[id].ClientName;
     }
 }
