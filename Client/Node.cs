@@ -61,7 +61,6 @@ namespace P2PProject.Client
                             {
                                 SyncService = new DataSyncService(this);
                                 await SyncService.InitaliseSync();
-                                Console.WriteLine("Sync Initalised, this may take up to 15s...\n");
                             }
                         }
                     }
@@ -205,6 +204,10 @@ namespace P2PProject.Client
                     SyncService.SyncNotifications.Add(dataSyncNotification);
                 }
                 
+            }
+            else if(item is FileNotification fileNotification)
+            {
+               DataStore.NetworkData.Add(fileNotification.Id, fileNotification);
             }
         }
 

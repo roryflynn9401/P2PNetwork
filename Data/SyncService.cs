@@ -15,7 +15,7 @@ namespace P2PProject.Data
 
         public virtual async Task InitaliseSync()
         {
-            Timer = new System.Timers.Timer(15000);
+            Timer = new System.Timers.Timer(10000);
             Timer.Elapsed += OnSyncEvent;
             Timer.Enabled = true;
         }

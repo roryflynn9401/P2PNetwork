@@ -29,7 +29,7 @@ namespace P2PProject.Client
         {
             _node = node;
             _node.TransferringFile = true;
-            _saveLocation = saveLocation;
+            _saveLocation = saveLocation;            
         }
 
         public async Task ProcessData(IPacket packet)
@@ -38,8 +38,11 @@ namespace P2PProject.Client
 
             if (packet is RequestPacket requestPacket)
             {
-                _fileName = requestPacket.FileName;
-                var validTransfer = File.Exists(requestPacket.FileName) && DataStore.NodeMap.ContainsKey(requestPacket.SenderId);
+                string workingDirectory = Environment.CurrentDirectory;
+                var saveDirectory = $"{workingDirectory}\\{_node.LocalClientInfo.ClientName}\\{requestPacket.FileName}";
+
+                _fileName = requestPacket.FromPath ? requestPacket.FileName : saveDirectory;
+                var validTransfer = File.Exists(requestPacket.FromPath ? requestPacket.FileName : saveDirectory) && DataStore.NodeMap.ContainsKey(requestPacket.SenderId);
                 var ack = new AckPacket
                 {
                     Id = Guid.NewGuid(),
@@ -47,7 +50,6 @@ namespace P2PProject.Client
                     AckType = validTransfer ? AckType.FileExists : AckType.FileNotFound
                 };
                 await SendUDP(requestPacket.SenderId, ack);
-
             }
             else if(packet is AckPacket ackPacket)
             {
@@ -89,6 +91,7 @@ namespace P2PProject.Client
                             MaxChunkSize = _maxChunkSize
                         };
                         await SendUDP(ackPacket.SenderId, fileInfo);
+
                         break;
 
                     default:
@@ -162,10 +165,10 @@ namespace P2PProject.Client
                                             .ToArray();
                     if(fileData.GetChecksumString() == _fileInfo?.FileChecksum && _saveLocation != null)
                     {
-                        using (StreamWriter file = new StreamWriter(_saveLocation))
+                        using (StreamWriter sw = new StreamWriter(_saveLocation))
                         {
                             Console.WriteLine($"File reconstructed successfully @ {_saveLocation}\n");
-                            file.Write(Encoding.UTF8.GetString(fileData));
+                            sw.Write(Encoding.UTF8.GetString(fileData));
                         }
                     }
                     else
@@ -234,6 +237,7 @@ namespace P2PProject.Client
     public class RequestPacket : Packet
     {
         public string FileName { get; set; }
+        public bool FromPath { get; set; }
     }
     public class AckPacket : Packet
     {

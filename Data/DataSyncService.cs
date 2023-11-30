@@ -7,9 +7,10 @@ namespace P2PProject.Data
     public class DataSyncService : SyncService
     {
         public List<DataSyncNotification> SyncNotifications = new();
-
-        public DataSyncService(Node node) : base(node)
+        private bool _isLocalSync;
+        public DataSyncService(Node node, bool isLocalSync = false) : base(node)
         {
+            _isLocalSync = isLocalSync;
         }
 
         public override async Task InitaliseSync()
@@ -24,50 +25,48 @@ namespace P2PProject.Data
                 Timestamp = DateTime.UtcNow,
                 Type = NotificationType.Sync,
             };
-
             await _localNode.SendUDPToNodes(DataStore.NodeMap.Select(x => x.Key).ToList(), networkNotification);
+            Console.WriteLine("Sync Initalised, this may take up to 10s...\n");
         }
 
         protected override async void OnSyncEvent(object source, ElapsedEventArgs e)
         {
             Timer?.Stop();
             if (_localNode == null) return;
+            if (_isLocalSync)
+            {
+                Console.WriteLine("Clearing local stores and rebuilding data");
+                DataStore.ClearData();
+            }
+
             if (SyncNotifications.Count == DataStore.NodeMap.Count)
             {
-                var networkItemIds = SyncNotifications.SelectMany(x => x.NetworkData.Keys).Distinct();
-                var localIds = DataStore.NetworkData.Select(x => x.Key);
-
-
-                var missingLocalData = networkItemIds.Except(localIds);
-                var missingNetworkData = localIds.Except(networkItemIds);
-
-                if (missingLocalData.Any())
+                foreach(var notification in SyncNotifications)
                 {
-                    var dataToAdd = SyncNotifications.SelectMany(x => x.NetworkData)
-                        .Where(x => missingLocalData.Contains(x.Key))
-                        .Distinct()
-                        .ToList();
+                    //Sync all local data first
+                    var missingLocalData = notification.NetworkData.Keys.Except(DataStore.NetworkData.Keys).ToList();
                     
-                    foreach(var item in dataToAdd)
+                    if (missingLocalData.Any())
                     {
-                        DataStore.NetworkData.TryAdd(item.Key, item.Value);
-                    }
-                    Console.WriteLine($"Added {dataToAdd.Count} items from network sync\n");
+                        foreach(var key in missingLocalData)
+                        {
+                            DataStore.NetworkData.TryAdd(key, notification.NetworkData[key]);
+                        }
+                        Console.WriteLine($"Added {missingLocalData.Count} missing data items to local data store from node {DataStore.GetNodeName(notification.SenderId)}");
+                    }            
                 }
-                if(missingNetworkData.Any())
-                {
-                    var nodeIds = SyncNotifications.Where(x => x.NetworkData.Any(x => missingNetworkData.Contains(x.Key)))
-                                                   .Select(x => x.SenderId)
-                                                   .ToList();
 
-                    Console.WriteLine($"{nodeIds.Count} unsynchronised nodes detected. Returning correct data list\n");
-                    foreach(var id in nodeIds)
+                foreach(var notification in SyncNotifications)
+                {
+                    //After local store is up to date, sync all other nodes
+                    var missingNetworkData = DataStore.NetworkData.Keys.Except(notification.NetworkData.Keys);
+                    if (missingNetworkData.Any())
                     {
                         var nodeMap = new Dictionary<Guid, NodeInfo>(DataStore.NodeMap)
                         {
                             { _localNode.LocalClientInfo.ClientId, _localNode.LocalClientInfo }
                         };
-                        nodeMap.Remove(id);
+                        nodeMap.Remove(notification.SenderId);
 
                         var syncNotification = new DataSyncNotification
                         {
@@ -79,8 +78,8 @@ namespace P2PProject.Data
                             IsSyncingNode = false,
                         };
 
-                         await _localNode.SendUDP(id, syncNotification);
-                    }                    
+                        await _localNode.SendUDP(notification.SenderId, syncNotification);
+                    }
                 }
             }
             else

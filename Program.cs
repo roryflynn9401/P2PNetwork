@@ -13,7 +13,8 @@ namespace P2PProject
         public enum SendTypes { String = 1, Notification = 2,};
         public static bool Connected = false; 
 
-        private static List<string> _commands = new() { "Connect to network via IP", "Connect to network via discovery service", "Initalise Network", "Add Data", "View Nodes on Network", "View Data", "Disconnect from network", "Generate malformed data", "Check for inactive nodes", "Transfer File" };
+        private static List<string> _commands = new() { "Connect to network via IP", "Connect to network via discovery service", "Initalise Network", "Add Data", 
+            "View Nodes on Network", "View Data", "Disconnect from network", "Generate malformed data", "Check for inactive nodes", "Get File from path", "Add file and notify network", "Get file on network", "Sync Data from network" };
         private static bool _quit = false;
         private static Node _localClient = new();
         private static Action _inputError = () => { Console.WriteLine("Input not recognised, returning to menu\n");};
@@ -27,7 +28,7 @@ namespace P2PProject
             Console.WriteLine("Set the nodes nickname");
 
             var nickname = Console.ReadLine();
-            _localClient.LocalClientInfo.ClientName = nickname ?? string.Empty;
+            _localClient.LocalClientInfo.ClientName = nickname ?? _localClient.LocalClientInfo.LocalNodeIP;
             var connectedInvalid = new[] { 0, 1 };
 
             Action _printNodes = () =>
@@ -176,7 +177,7 @@ namespace P2PProject
                             Console.WriteLine("Enter the name or path of the file you want");
                             var fileName = Console.ReadLine();
                             Console.WriteLine("Enter the location you want to save the file in");
-                            var fileLocation = Console.ReadLine();
+                            var saveLocation = Console.ReadLine();
                             if (fileName != null)
                             {
                                 var request = new RequestPacket
@@ -184,10 +185,81 @@ namespace P2PProject
                                     Id = Guid.NewGuid(),
                                     SenderId = _localClient.LocalClientInfo.ClientId,
                                     FileName = fileName,
+                                    FromPath = true,
                                 };
-                                _localClient.FileTransferClient = new UDPFileTransferClient(_localClient, fileLocation);
+                                _localClient.FileTransferClient = new UDPFileTransferClient(_localClient, saveLocation);
                                 await _localClient.FileTransferClient.SendUDPToNodes(DataStore.NodeMap.Select(x => x.Key).ToList(), request);
                             }
+                            break;
+                        case 11:
+                            Console.WriteLine("Enter the path of the file you want to add");
+                            var filePath = Console.ReadLine();
+                            if (File.Exists(filePath))
+                            {
+                                string workingDirectory = Environment.CurrentDirectory;
+                                var directory = $"{workingDirectory}\\{_localClient.LocalClientInfo.ClientName}";
+                                if (!Directory.Exists(directory))
+                                {
+                                    Directory.CreateDirectory(directory);
+                                }
+                                File.Copy(filePath, directory + "\\" +Path.GetFileName(filePath));
+                                var fileNotification = new FileNotification
+                                {
+                                    Id = Guid.NewGuid(),
+                                    SenderId = _localClient.LocalClientInfo.ClientId,
+                                    FileName = Path.GetFileName(filePath),
+                                    Timestamp = DateTime.UtcNow,
+                                };
+                                DataStore.NetworkData.Add(fileNotification.Id, fileNotification);
+                                await _localClient.SendUDPToNodes(DataStore.NodeMap.Select(x => x.Key).ToList(), fileNotification);
+                            }
+                            else Console.WriteLine("File does not exist");
+                            break;
+                        case 12:
+                            Console.WriteLine("Enter the name of the file you want\n");
+                            var networkFiles = DataStore.NetworkData.Where(x => x.Value is FileNotification).Select(x => x.Value as FileNotification).ToList();
+                            if (networkFiles.Any())
+                            {
+                                for (int y = 0; y < networkFiles.Count; y++)
+                                {
+                                    Console.WriteLine($"{y + 1}. {networkFiles[y]?.FileName}");
+                                }
+                                var fileSelected = Console.ReadLine();
+                                if (int.TryParse(fileSelected, out int fileNumber))
+                                {
+                                    string workingDirectory = Environment.CurrentDirectory;
+                                    var directory = $"{workingDirectory}\\{_localClient.LocalClientInfo.ClientName}";
+                                    if (!Directory.Exists(directory))
+                                    {
+                                        Directory.CreateDirectory(directory);
+                                    }
+                                    var file = networkFiles[fileNumber - 1];
+                                    var request = new RequestPacket
+                                    {
+                                        Id = Guid.NewGuid(),
+                                        SenderId = _localClient.LocalClientInfo.ClientId,
+                                        FileName = file.FileName,
+                                        FromPath = false,
+                                    };
+                                    _localClient.FileTransferClient = new UDPFileTransferClient(_localClient, $"{directory}\\{file.FileName}");
+                                    await _localClient.FileTransferClient.SendUDPToNodes(DataStore.NodeMap.Select(x => x.Key).ToList(), request);
+                                }
+                                else
+                                {
+                                    _inputError.Invoke();
+                                    continue;
+                                }
+                            }
+                            else
+                            {
+                                Console.WriteLine("No files currently on the network\n");
+                            }
+                            
+                            break;
+
+                        case 13:
+                            _localClient.SyncService = new DataSyncService(_localClient, true);
+                            await _localClient.SyncService.InitaliseSync();
                             break;
                         default:
                             _inputError.Invoke();
