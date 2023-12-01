@@ -1,9 +1,6 @@
 ﻿using Newtonsoft.Json;
-using P2PProject.Client.EventHandlers;
-using P2PProject.Data;
 using System.Security.Cryptography;
 using System.Text;
-using System.Text.Json;
 
 namespace P2PProject.Client.Extensions
 {

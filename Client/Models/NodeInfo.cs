@@ -19,7 +19,7 @@ namespace P2PProject.Client.Models
         public Guid ClientId { get; set; }
         public string ClientName { get; set; }
 
-        [JsonIgnore]
+        [JsonIgnore, System.Text.Json.Serialization.JsonIgnore]
         public IPEndPoint LocalIPEndPoint => new IPEndPoint(IPAddress.Parse(LocalNodeIP), Port);
     }
 }

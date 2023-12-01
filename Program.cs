@@ -1,9 +1,8 @@
 ﻿using P2PProject.Client;
-using P2PProject.Client.EventHandlers;
 using P2PProject.Client.Extensions;
 using P2PProject.Client.Models;
 using P2PProject.Data;
-using System.Collections.Concurrent;
+using System;
 using System.Net;
 
 namespace P2PProject
@@ -11,25 +10,29 @@ namespace P2PProject
     public static class Program
     {
         public enum SendTypes { String = 1, Notification = 2,};
-        public static bool Connected = false; 
+        public static bool Connected => _localClient.NetworkId.HasValue;
 
         private static List<string> _commands = new() { "Connect to network via IP", "Connect to network via discovery service", "Initalise Network", "Add Data", 
-            "View Nodes on Network", "View Data", "Disconnect from network", "Generate malformed data", "Check for inactive nodes", "Get File from path", "Add file and notify network", "Get file on network", "Sync Data from network" };
+            "View Nodes on Network", "View Data", "Disconnect from network", "Generate malformed data", "Check for inactive nodes", "Get File from path", 
+            "Add file and notify network", "Get file on network", "Sync Data from network", "Shutdown Network" };
+
         private static bool _quit = false;
         private static Node _localClient = new();
         private static Action _inputError = () => { Console.WriteLine("Input not recognised, returning to menu\n");};
+        private static DirectoryService? _directoryService;
 
         public static async Task Main(string[] args)
         {
             //Set client information
-            NotificationHandler _notificationHandler = new(_localClient);
             _localClient.InitialiseNode();
             Console.WriteLine($"Your information is {_localClient.LocalClientInfo.LocalNodeIP}:{_localClient.LocalClientInfo.Port}\n");
             Console.WriteLine("Set the nodes nickname");
 
             var nickname = Console.ReadLine();
             _localClient.LocalClientInfo.ClientName = nickname ?? _localClient.LocalClientInfo.LocalNodeIP;
-            var connectedInvalid = new[] { 0, 1 };
+            var connectedInvalid = new[] { 1, 2, 3 };
+            _directoryService = new DirectoryService(_localClient);
+            _localClient.DirectoryService = _directoryService;
 
             Action _printNodes = () =>
             {
@@ -42,26 +45,29 @@ namespace P2PProject
                 }
             };
 
+
+            //Show Networks before menu
+            await ViewNetworks();
+
             while (!_quit)
             { 
 
                 Console.WriteLine("Hello! Here are the supported features:\n");
                 for (int i = 0; i < _commands.Count; i++)
                 {
-                    var isConnected = Connected && connectedInvalid.Contains(i) ? "- ALREADY CONNECTED" : "";
-                    Console.WriteLine($"{i + 1}. {_commands[i]} {isConnected}");
+                    if (Connected && connectedInvalid.Contains(i+1)) continue;
+                    var y = Connected ? i - 2 : i + 1;
+
+                    Console.WriteLine($"{y}. {_commands[i]}");
                 }
+
                 if (int.TryParse(Console.ReadLine(), out int command))
                 {
+                    command = Connected ? command + 3 : command;
+
                     switch (command)
                     {
                         case 1:
-                            if (Connected)
-                            {
-                                Console.WriteLine("You are already connected to a network\n");
-                                break;
-                            }
-
                             Console.WriteLine("Enter the IP of a node on the network");
                             if (IPAddress.TryParse(Console.ReadLine(), out IPAddress? ipAddress))
                             {
@@ -99,10 +105,14 @@ namespace P2PProject
                             break;
 
                         case 2:
+                            await ViewNetworks();
                             break;
 
                         case 3:
-                            Console.WriteLine("New network initalised, listening for new connections");
+                            Console.WriteLine("Initialising network...");
+                            var id = await _directoryService.InitialiseNetwork();
+                            if (id == default) { Console.WriteLine("Error initialising network"); break; }
+                            _localClient.NetworkId = id.Value;
                             break;
 
                         case 4:
@@ -155,6 +165,7 @@ namespace P2PProject
                             Console.WriteLine("Disconnecting from network...");
                             await _localClient.DisconnectFromNetwork();
                             _quit = true;
+                            Environment.Exit(0);
                             break;
                         case 8:
                             var data = new StringNotification
@@ -202,16 +213,39 @@ namespace P2PProject
                                 {
                                     Directory.CreateDirectory(directory);
                                 }
-                                File.Copy(filePath, directory + "\\" +Path.GetFileName(filePath));
-                                var fileNotification = new FileNotification
+
+
+                                if(!File.Exists(directory + "\\" + Path.GetFileName(filePath)))
                                 {
-                                    Id = Guid.NewGuid(),
-                                    SenderId = _localClient.LocalClientInfo.ClientId,
-                                    FileName = Path.GetFileName(filePath),
-                                    Timestamp = DateTime.UtcNow,
-                                };
-                                DataStore.NetworkData.Add(fileNotification.Id, fileNotification);
-                                await _localClient.SendUDPToNodes(DataStore.NodeMap.Select(x => x.Key).ToList(), fileNotification);
+                                    File.Copy(filePath, directory + "\\" +Path.GetFileName(filePath));
+
+                                    var fileNotification = new FileNotification
+                                    {
+                                        Id = Guid.NewGuid(),
+                                        SenderId = _localClient.LocalClientInfo.ClientId,
+                                        FileName = Path.GetFileName(filePath),
+                                        Timestamp = DateTime.UtcNow,
+                                    };
+                                    DataStore.NetworkData.Add(fileNotification.Id, fileNotification);
+                                    await _localClient.SendUDPToNodes(DataStore.NodeMap.Select(x => x.Key).ToList(), fileNotification);
+                                }
+                                else if(DataStore.NetworkData.Any(x => x.Value is FileNotification file && file.FileName == Path.GetFileName(filePath)))
+                                {
+                                    Console.WriteLine("Network already knows about this file");
+                                }
+                                else
+                                {
+                                    var fileNotification = new FileNotification
+                                    {
+                                        Id = Guid.NewGuid(),
+                                        SenderId = _localClient.LocalClientInfo.ClientId,
+                                        FileName = Path.GetFileName(filePath),
+                                        Timestamp = DateTime.UtcNow,
+                                    };
+                                    DataStore.NetworkData.Add(fileNotification.Id, fileNotification);
+                                    await _localClient.SendUDPToNodes(DataStore.NodeMap.Select(x => x.Key).ToList(), fileNotification);
+                                }
+                                
                             }
                             else Console.WriteLine("File does not exist");
                             break;
@@ -261,6 +295,21 @@ namespace P2PProject
                             _localClient.SyncService = new DataSyncService(_localClient, true);
                             await _localClient.SyncService.InitaliseSync();
                             break;
+                        case 14:
+                            Console.WriteLine("Shutting down network...");
+                            var shutdown = new NetworkNotification
+                            {
+                                Id = Guid.NewGuid(),
+                                SenderId = _localClient.LocalClientInfo.ClientId,
+                                Timestamp = DateTime.UtcNow,
+                                Type = NotificationType.NetworkShutdown,
+                            };
+                            _quit = true;
+                            await _localClient.SendUDPToNodes(DataStore.NodeMap.Select(x => x.Key).ToList(), shutdown);
+                            await _directoryService.NetworkShutdown(_localClient.NetworkId.Value);
+                            Console.WriteLine("Network shutdown, Shutting down node");
+                            Environment.Exit(0);
+                            break;
                         default:
                             _inputError.Invoke();
                             continue;
@@ -274,6 +323,49 @@ namespace P2PProject
                 
 
             }           
+        }
+
+        private static async Task ViewNetworks()
+        {
+            var networks = await _directoryService.GetNetworks();
+            if (networks == null || networks.Count == 0)
+            {
+                Console.WriteLine("No networks currently available to join\n");
+                return;
+            }
+
+            Console.WriteLine("Networks currently available:");
+            int i = 1;
+            foreach (var network in networks)
+            {
+                Console.WriteLine($"{i}. Network: {network.Id} \nConnectedNodes: {network.NodeCount}");
+                i++;
+            }
+
+            Console.WriteLine("Select the network to connect to or type N to go to menu\n");
+            var networkSelected = Console.ReadLine();
+            if (networkSelected?.ToLower() == "n")
+            {
+                return;
+            }
+            else if (int.TryParse(networkSelected, out int networkNumber))
+            {
+                if (networkNumber > networks.Count || networkNumber < 1)
+                {
+                    _inputError.Invoke();
+                    return;
+                }
+                var network = networks[networkNumber - 1];
+                var id = await _directoryService.ConnectViaDirectory(network.Id);
+                if (id == default || id == Guid.Empty) { Console.WriteLine("Error connecting to network"); return; }
+                _localClient.NetworkId = id.Value;
+                return;
+            }
+            else
+            {
+                _inputError.Invoke();
+                return;
+            }
         }
     }
 }

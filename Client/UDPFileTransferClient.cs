@@ -156,6 +156,7 @@ namespace P2PProject.Client
                         SenderId = _node.LocalClientInfo.ClientId
                     };
                     await SendUDP(payloadPacket.SenderId, transferComplete);
+                    _node.TransferringFile = false;
 
                     Console.WriteLine("File transfer complete\n Reconstructing file");
                     var fileData = _packets.Where(x => x is PayloadPacket)
@@ -178,9 +179,8 @@ namespace P2PProject.Client
                 }
             }
             else if(packet is ByePacket byePacket)
-            {
-                _node.TransferringFile = false;
-                if(!_packets.Any(x => x is ByePacket))
+            {              
+                if(_node.TransferringFile)
                 {
                     var byeAck = new ByePacket
                     {
@@ -188,6 +188,7 @@ namespace P2PProject.Client
                         SenderId = _node.LocalClientInfo.ClientId
                     };
                     await SendUDP(byePacket.SenderId, byeAck);
+                    _node.TransferringFile = false;
                 }
             }
         }

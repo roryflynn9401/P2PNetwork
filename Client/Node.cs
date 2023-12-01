@@ -1,5 +1,4 @@
-﻿using P2PProject.Client.EventHandlers;
-using P2PProject.Client.Extensions;
+﻿using P2PProject.Client.Extensions;
 using P2PProject.Client.Models;
 using P2PProject.Data;
 using System.Net;
@@ -9,19 +8,16 @@ namespace P2PProject.Client
 {
     public class Node
     {
-        private Thread UDPListenerThread;
+        private Thread? UDPListenerThread;
         public NodeInfo LocalClientInfo { get; set; } = new();
         public bool UDPListen { get; set; }
         public bool TransferringFile { get; set; }
         public DataSyncService? SyncService;
         public PingService? PingService;
         public UDPFileTransferClient? FileTransferClient;
+        public DirectoryService? DirectoryService;
 
-        public event EventHandler<MessageEventArgs> MessageReceived;
-        public event EventHandler<ConnectionEventArgs> NodeConnected;
-        public event EventHandler<ConnectionEventArgs> NetworkConnect;
-        public event EventHandler<NetworkEventArgs> NetworkDisconnect;
-        public event EventHandler<NetworkEventArgs> NetworkShutdown;
+        public Guid? NetworkId { get; set; }
 
         public Node(bool _udpListen = false) 
         {
@@ -43,7 +39,7 @@ namespace P2PProject.Client
                     while (UDPListen)
                     {
                         var receiveBytes = receivingUdpClient.Receive(ref RemoteIpEndPoint);
-                        var returnData = TransferringFile ? null : ByteExtensions.DecodeByteArray<ISendableItem>(receiveBytes);
+                        var returnData = ByteExtensions.DecodeByteArray<ISendableItem>(receiveBytes);
 
                         if (returnData != null && returnData != default(ISendableItem))
                         {
@@ -65,13 +61,9 @@ namespace P2PProject.Client
                         }
                     }
                 }
-                catch(SocketException se)
+                catch(SocketException)
                 {
                     RetryDifferentPort();
-                }
-                catch(ThreadInterruptedException ti)
-                {
-                    receivingUdpClient.Dispose();
                 }
                 catch (Exception e)
                 {
@@ -153,12 +145,17 @@ namespace P2PProject.Client
                 Timestamp = DateTime.UtcNow,
                 Type = NotificationType.Disconnection,
             };
+            if(DirectoryService != null && NetworkId.HasValue)
+            {
 
-            await SendUDPToNodes(DataStore.NodeMap.Select(x => x.Key).ToList(), disconnectionNotification);                           
-            DataStore.ClearAllData();
+                await DirectoryService.RemoveNodeFromNetwork(NetworkId.Value);
+                await SendUDPToNodes(DataStore.NodeMap.Select(x => x.Key).ToList(), disconnectionNotification);                           
+                DataStore.ClearAllData();
+                NetworkId = null;
+                Console.WriteLine("Disconnected from network\n");
+            }
+
         }
-
-
 
         #endregion
 
@@ -169,12 +166,10 @@ namespace P2PProject.Client
             //Safe cast sendable items to decode what is sent
             if (item is StringNotification message)
             {               
-                OnMessageReceived(new MessageEventArgs(message.SenderId, message));
                 ProcessStringNotification(message);
             }
             else if(item is ConnectionNotification notification)
             {
-                OnNodeConnected(new ConnectionEventArgs(notification.SenderId, notification));
                 await ProcessConnectionNotification(notification);
                 
             }
@@ -207,6 +202,7 @@ namespace P2PProject.Client
             }
             else if(item is FileNotification fileNotification)
             {
+               Console.WriteLine($"File {fileNotification.FileName} is available on node {DataStore.GetNodeName(fileNotification.SenderId)}\n");
                DataStore.NetworkData.Add(fileNotification.Id, fileNotification);
             }
         }
@@ -228,7 +224,7 @@ namespace P2PProject.Client
         {
             var senderId = notification.SenderId;
             Console.WriteLine($"New node added to network \n Name: {notification.NodeName} \n ID: {senderId} \n  EP: {notification.ConnectionInformation.Address}:{notification.ConnectionInformation.Port}");
-            if (!DataStore.NodeMap.ContainsKey(senderId) && senderId != LocalClientInfo.ClientId)
+            if (!DataStore.NodeMap.ContainsKey(senderId) && senderId != LocalClientInfo.ClientId && NetworkId.HasValue)
             {
                 DataStore.NodeMap.Add(senderId, notification.ConnectionInformation.ToNodeInfo(senderId, notification.NodeName));
                 Console.WriteLine("Node added to store \n");
@@ -248,6 +244,7 @@ namespace P2PProject.Client
                     NodeMap = modNodeMap,
                     SenderId = LocalClientInfo.ClientId,
                     Timestamp = DateTime.UtcNow,
+                    NetworkId = NetworkId.Value
                 };
 
                 //Return data to new node
@@ -260,7 +257,11 @@ namespace P2PProject.Client
         {
             DataStore.NodeMap = dataNotification.NodeMap;
             DataStore.NetworkData = dataNotification.NetworkData;
-
+            if (!NetworkId.HasValue)
+            {
+                NetworkId = dataNotification.NetworkId;
+                await DirectoryService.AddNodeToNetwork(NetworkId.Value);
+            }
             Console.WriteLine($"Data sync'd from node {dataNotification.SenderId}\n");
 
             var connectionMessage = new ConnectionNotification
@@ -274,7 +275,6 @@ namespace P2PProject.Client
                 NodeName = LocalClientInfo.ClientName
             };
 
-            Program.Connected = true;
             //Notify other nodes of new connection
             await SendUDPToNodes(DataStore.NodeMap.Where(x => x.Key != dataNotification.SenderId).Select(x => x.Key).ToList(), connectionMessage);
             Console.WriteLine("Notified all other nodes of connection\n");
@@ -287,15 +287,16 @@ namespace P2PProject.Client
                 switch (networkNotification.Type)
                 {
                     case NotificationType.Disconnection:
-                        OnNodeDisconnect(new NetworkEventArgs(LocalClientInfo.ClientId, networkNotification));
+                        Console.WriteLine($"Node {node.ClientName} disconnected from network\n");
+                        DataStore.NodeMap.Remove(node.ClientId);                 
+                        break;
 
-                            Console.WriteLine($"Node {node.ClientName} disconnected from network\n");
-                            DataStore.NodeMap.Remove(node.ClientId);
-                    
-                        break;
                     case NotificationType.NetworkShutdown:
-                        OnNetworkShutdown(new NetworkEventArgs(LocalClientInfo.ClientId, networkNotification));
+                        DataStore.ClearAllData();
+                        Console.WriteLine($"Network shutdown initiated by node {node.ClientName}\n");
+                        Environment.Exit(0);
                         break;
+
                     case NotificationType.Sync:
                         var nodeMap = DataStore.NodeMap;
 
@@ -311,6 +312,7 @@ namespace P2PProject.Client
                         Console.WriteLine($"Network sync requested by node {node.ClientName}\n");
                         await SendUDP(networkNotification.SenderId, dataSync);
                         break;
+
                     case NotificationType.Ping:
                         var ack = new NetworkNotification
                         {
@@ -322,20 +324,22 @@ namespace P2PProject.Client
 
                         Console.WriteLine($"Ping received by {node.ClientName}, sending ACK");
                         await SendUDP(node.ClientId, ack);
-
                         break;
+
                     case NotificationType.PingAck:
                         if (PingService == null) return;
                         PingService.PingAckNotifications.Add(networkNotification);
                         break;
+
                     case NotificationType.InvalidPort:
                         if(DataStore.NodeMap.Count == 0)
                         {
                             RetryDifferentPort();
                         }
-
                         break;
+
                     default:
+                        Console.WriteLine($"Unknown network notification type {networkNotification.Type} sent by node {DataStore.GetNodeName(networkNotification.SenderId)}");
                         break;
                 };
             }
@@ -365,6 +369,11 @@ namespace P2PProject.Client
                     var selectedIp = Console.ReadLine();
                     if (int.TryParse(selectedIp, out int ipIndex))
                     {
+                        if(ipIndex > ips.Length || ipIndex < 1)
+                        {
+                            Console.WriteLine("Invalid IP address selected, please try again.");
+                            continue;
+                        }
                         LocalClientInfo.LocalNodeIP = ips.ElementAt(ipIndex - 1).ToString();
                         ipSelected = true;
                     }
@@ -403,19 +412,6 @@ namespace P2PProject.Client
             Console.WriteLine($"Port {LocalClientInfo.Port} is unavailable, switching to port {newPort}\nAttempt connection again.");
             LocalClientInfo.Port = newPort;
             RecieveUDP(LocalClientInfo.Port);
-        }
-
-        protected virtual void OnMessageReceived(MessageEventArgs e) => OnEventOccured(e, MessageReceived);
-        protected virtual void OnNodeConnected(ConnectionEventArgs e) => OnEventOccured(e, NodeConnected);
-        protected virtual void OnNodeDisconnect(NetworkEventArgs e) => OnEventOccured(e, NetworkDisconnect);
-        protected virtual void OnNetworkShutdown(NetworkEventArgs e) => OnEventOccured(e, NetworkShutdown);
-        protected void OnEventOccured<TEventArgs>(TEventArgs e, EventHandler<TEventArgs> h)
-        {
-            EventHandler<TEventArgs> handler = h;
-            if (handler != null)
-            {
-                handler(this, e);
-            }
         }
 
         #endregion

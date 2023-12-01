@@ -11,5 +11,6 @@ namespace P2PProject.Client.Models
         public Dictionary<Guid, NodeInfo> NodeMap { get; set; } = new();
         public Dictionary<Guid, ISendableItem> NetworkData { get; set; } = new();
         public DateTime? Timestamp { get; set; }
+        public Guid NetworkId { get; set; }
     }
 }

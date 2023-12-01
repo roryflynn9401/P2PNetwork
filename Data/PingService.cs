@@ -1,5 +1,6 @@
 ﻿using P2PProject.Client;
 using P2PProject.Client.Models;
+using System.Linq;
 using System.Timers;
 
 namespace P2PProject.Data
@@ -43,9 +44,12 @@ namespace P2PProject.Data
             }
             else
             {
-                Console.WriteLine($"{noResponseIds.Count} nodes did not respond to ping. \nNotifying network of inactive nodes... \nRemoving nodes from data store");
+                Console.WriteLine($"{noResponseIds.Count} nodes did not respond to ping. \nNotifying network of inactive nodes... \nRemoving nodes from data store...\nRemoving nodes from directory");
                 
                 var responses = PingAckNotifications.Select(x =>x.SenderId).ToList();
+                var tasks = new List<Task>();
+                noResponseIds.ForEach(x => tasks.Add(_localNode.DirectoryService.RemoveNodeFromNetwork(_localNode.NetworkId.Value, x)));
+                await Task.WhenAll(tasks);
                 noResponseIds.ForEach(x => DataStore.NodeMap.Remove(x));
                 var nodeMap = new Dictionary<Guid, NodeInfo>(DataStore.NodeMap)
                 {
@@ -63,6 +67,7 @@ namespace P2PProject.Data
                 };
 
                 await _localNode.SendUDPToNodes(responses, dataSync);
+                
             }
 
             if (FromDataSync && _localNode.SyncService != null)
