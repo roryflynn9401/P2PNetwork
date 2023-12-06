@@ -1,4 +1,5 @@
 ﻿using Newtonsoft.Json;
+using Newtonsoft.Json.Serialization;
 using System.Security.Cryptography;
 using System.Text;
 
@@ -18,17 +19,18 @@ namespace P2PProject.Client.Extensions
             return Encoding.UTF8.GetBytes(jsonString);
         }
 
-        public static T? DecodeByteArray<T>(byte[] bytes)
+        public static T? DecodeByteArray<T>(byte[] bytes, bool includeTypes = true)
         {
             string data = Encoding.UTF8.GetString(bytes);
             try
             {
-                var obj = JsonConvert.DeserializeObject<T>(data, _serializationSettings);
-                if (obj != null) return obj;    
+                var obj = JsonConvert.DeserializeObject<T>(data, includeTypes ? _serializationSettings : new JsonSerializerSettings());
+                if (obj != null) return obj;
             }
-            catch {            }
+            catch { }
 
             return default;
+
         }
         
         public static string GetChecksumString(this byte[] bytes)
@@ -39,5 +41,7 @@ namespace P2PProject.Client.Extensions
                 return Encoding.UTF8.GetString(byteChecksum);
             }
         }
+
+        public static bool ContainsType(byte[] bytes) => Encoding.UTF8.GetString(bytes).Contains("$type");
     }
 }

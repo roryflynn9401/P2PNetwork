@@ -39,11 +39,14 @@ namespace P2PProject.Client
                     while (UDPListen)
                     {
                         var receiveBytes = receivingUdpClient.Receive(ref RemoteIpEndPoint);
+                        var fromNode = ByteExtensions.ContainsType(receiveBytes);
+
                         var returnData = ByteExtensions.DecodeByteArray<ISendableItem>(receiveBytes);
 
                         if (returnData != null && returnData != default(ISendableItem))
                         {
                             await ProcessItem(returnData, RemoteIpEndPoint);
+                            continue;
                         }
                         else
                         {
@@ -52,13 +55,23 @@ namespace P2PProject.Client
                             {
                                 FileTransferClient ??= new UDPFileTransferClient(this);
                                 await FileTransferClient.ProcessData(ftData);
+                                continue;
                             }
-                            else if(!TransferringFile)
+                            else if (!TransferringFile)
                             {
+                                Console.WriteLine("Malformed data received, attempting to sync network\n");
                                 SyncService = new DataSyncService(this);
                                 await SyncService.InitaliseSync();
+                                continue;
                             }
                         }
+            
+                        if(!fromNode)
+                        {
+                            var objData = ByteExtensions.DecodeByteArray<SendableItem>(receiveBytes);
+                            await ProcessItem(objData, RemoteIpEndPoint);
+                        }
+ 
                     }
                 }
                 catch(SocketException)
@@ -205,6 +218,11 @@ namespace P2PProject.Client
                Console.WriteLine($"File {fileNotification.FileName} is available on node {DataStore.GetNodeName(fileNotification.SenderId)}\n");
                DataStore.NetworkData.Add(fileNotification.Id, fileNotification);
             }
+            else if(item is SendableItem sendableItem)
+            {                
+                Console.WriteLine($"New item added by node {DataStore.GetNodeName(sendableItem.SenderId)}");
+                DataStore.NetworkData.Add(sendableItem.Id, sendableItem);
+            }
         }
 
         #region Readability Methods 
@@ -213,10 +231,8 @@ namespace P2PProject.Client
         {
             if (DataStore.NodeMap.ContainsKey(message.SenderId))
             {
-                Console.WriteLine($"Data recieved from {message.SenderId}");
-                Console.WriteLine($"Message Content: {message.Content}"); ;
+                Console.WriteLine($"Data recieved from {DataStore.GetNodeName(message.SenderId)}\nMessage Content: {message.Content}\nItem {message.Id} stored\n");
                 DataStore.NetworkData.Add(message.Id, message);
-                Console.WriteLine($"Item {message.Id} stored\n");
             }
         }
 
@@ -262,7 +278,7 @@ namespace P2PProject.Client
                 NetworkId = dataNotification.NetworkId;
                 await DirectoryService.AddNodeToNetwork(NetworkId.Value);
             }
-            Console.WriteLine($"Data sync'd from node {dataNotification.SenderId}\n");
+            Console.WriteLine($"Data sync'd from node {DataStore.GetNodeName(dataNotification.SenderId)}\n");
 
             var connectionMessage = new ConnectionNotification
             {
@@ -371,7 +387,7 @@ namespace P2PProject.Client
                     {
                         if(ipIndex > ips.Length || ipIndex < 1)
                         {
-                            Console.WriteLine("Invalid IP address selected, please try again.");
+                            Console.WriteLine("Invalid selection, please try again.");
                             continue;
                         }
                         LocalClientInfo.LocalNodeIP = ips.ElementAt(ipIndex - 1).ToString();

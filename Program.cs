@@ -1,20 +1,20 @@
-﻿using P2PProject.Client;
+﻿using Newtonsoft.Json;
+using P2PProject.Client;
 using P2PProject.Client.Extensions;
 using P2PProject.Client.Models;
 using P2PProject.Data;
-using System;
 using System.Net;
 
 namespace P2PProject
 {
     public static class Program
     {
-        public enum SendTypes { String = 1, Notification = 2,};
+        public enum SendTypes { String = 1, Object = 2,};
         public static bool Connected => _localClient.NetworkId.HasValue;
 
         private static List<string> _commands = new() { "Connect to network via IP", "Connect to network via discovery service", "Initalise Network", "Add Data", 
             "View Nodes on Network", "View Data", "Disconnect from network", "Generate malformed data", "Check for inactive nodes", "Get File from path", 
-            "Add file and notify network", "Get file on network", "Sync Data from network", "Shutdown Network" };
+            "Add file and notify network", "Get file on network", "Sync Data from network", "Shutdown Network", "Generate example data", "Simulate unreliable connection", "Add data locally" };
 
         private static bool _quit = false;
         private static Node _localClient = new();
@@ -116,49 +116,19 @@ namespace P2PProject
                             break;
 
                         case 4:
-                            Console.WriteLine("What kind of data do you want to add?");
-                            int i = 1;
-                            foreach (var type in Enum.GetNames(typeof(SendTypes)))
-                            {
-                                Console.WriteLine($"{i}. {type}");
-                                i++;
-                            }
-                            if (int.TryParse(Console.ReadLine(), out int messageType))
-                            {
-                                switch (messageType)
-                                {
-                                    case 1:
-                                        Console.WriteLine("What is the string content?");
-                                        var content = Console.ReadLine();
-                                        var message = new StringNotification
-                                        {
-                                            Id = Guid.NewGuid(),
-                                            Content = content ?? string.Empty,
-                                            SenderId = _localClient.LocalClientInfo.ClientId,
-                                            Timestamp = DateTime.Now,
-                                        };
-                                        DataStore.NetworkData.Add(message.Id, message);
-                                        if (DataStore.NodeMap.Any())
-                                        {
-                                            await _localClient.SendUDPToNodes(DataStore.NodeMap.Select(x => x.Key).ToList(), message);
-                                        }
-                                        else
-                                        {
-                                            Console.WriteLine("You are not connected to a network, data has been saved");
-                                        }
-                                        break;
-                                }
-
-                            }
+                            await AddData();
                             break;
                         case 5:
                             _printNodes.Invoke();
                             break;
                         case 6:
                             Console.WriteLine("Data currently stored:");
-                            foreach (var dataPair in DataStore.NetworkData.OrderBy(x => x.GetType()))
+                            foreach (var dataPair in DataStore.NetworkData.OrderBy(x => x.Value.Timestamp))
                             {
-                                Console.WriteLine($"{dataPair.Key}: {dataPair.Value.GetType().Name}");
+                                var content = dataPair.Value is StringNotification sn ? sn.Content : 
+                                              dataPair.Value is SendableItem si ? JsonConvert.SerializeObject(si.Item) : string.Empty;
+
+                                Console.WriteLine($"({dataPair.Value.Timestamp}) {dataPair.Key}: {dataPair.Value.GetType().Name} \n{content}");
                             }
                             break;
                         case 7:
@@ -310,6 +280,15 @@ namespace P2PProject
                             Console.WriteLine("Network shutdown, Shutting down node");
                             Environment.Exit(0);
                             break;
+                        case 15:
+                            await GenerateExampleData();
+                            break;
+                        case 16:
+                            break;
+                        case 17:
+                            await AddData(true);
+                            break;
+
                         default:
                             _inputError.Invoke();
                             continue;
@@ -365,6 +344,102 @@ namespace P2PProject
             {
                 _inputError.Invoke();
                 return;
+            }
+        }
+
+        private static async Task AddData(bool localOnly = false)
+        {
+            Console.WriteLine("What kind of data do you want to add?");
+            int i = 1;
+            foreach (var type in Enum.GetNames(typeof(SendTypes)))
+            {
+                Console.WriteLine($"{i}. {type}");
+                i++;
+            }
+            if (int.TryParse(Console.ReadLine(), out int messageType))
+            {
+                switch (messageType)
+                {
+                    case 1:
+                        Console.WriteLine("What is the string content?");
+                        var content = Console.ReadLine();
+                        var message = new StringNotification
+                        {
+                            Id = Guid.NewGuid(),
+                            Content = content ?? string.Empty,
+                            SenderId = _localClient.LocalClientInfo.ClientId,
+                            Timestamp = DateTime.Now,
+                        };
+                        DataStore.NetworkData.Add(message.Id, message);
+                        if (DataStore.NodeMap.Any() && !localOnly)
+                        {
+                            await _localClient.SendUDPToNodes(DataStore.NodeMap.Select(x => x.Key).ToList(), message);
+                        }
+                        else
+                        {
+                            Console.WriteLine("You are not connected to a network, data has been saved");
+                        }
+                        break;
+
+                    case 2:
+                        Console.WriteLine("What is the object content as JSON?");
+                        var objectContent = Console.ReadLine();
+                        var obj = JsonConvert.DeserializeObject(objectContent ?? string.Empty);
+                        var sendableItem = new SendableItem
+                        {
+                            Id = Guid.NewGuid(),
+                            Item = obj,
+                            SenderId = _localClient.LocalClientInfo.ClientId,
+                            Timestamp = DateTime.Now,
+                        };
+                        DataStore.NetworkData.Add(sendableItem.Id, sendableItem);
+                        if (DataStore.NodeMap.Any() && !localOnly)
+                        {
+                            await _localClient.SendUDPToNodes(DataStore.NodeMap.Select(x => x.Key).ToList(), sendableItem);
+                        }
+                        else
+                        {
+                            Console.WriteLine("You are not connected to a network, data has been saved");
+                        }
+                        break;
+                }
+            }
+            else { _inputError.Invoke(); return;}
+        }
+
+        private static async Task GenerateExampleData(bool localOnly = false)
+        {
+            var items = new List<ISendableItem>();
+            for(int i =0; i<10; i++)
+            {
+                var message = new StringNotification
+                {
+                    Id = Guid.NewGuid(),
+                    Content = "Example String",
+                    SenderId = _localClient.LocalClientInfo.ClientId,
+                    Timestamp = DateTime.Now,
+                };
+                items.Add(message);
+
+                var sendableItem = new SendableItem
+                {
+                    Id = Guid.NewGuid(),
+                    Item = new { Example = "Example Object", Age = 19, Name = "Rory", University = "Queen's University Belfast" },
+                    SenderId = _localClient.LocalClientInfo.ClientId,
+                    Timestamp = DateTime.Now,
+                };
+                items.Add(sendableItem);
+            }
+            foreach(var item in items)
+            {
+                DataStore.NetworkData.Add(item.Id, item);
+                if (DataStore.NodeMap.Any() && !localOnly)
+                {
+                    var itemTasks = new List<Task>();
+                    var ids = DataStore.NodeMap.Select(x => x.Key).ToList();
+                    itemTasks.Add(_localClient.SendUDPToNodes(ids, item)); 
+                    await Task.WhenAll(itemTasks);
+                }
             }
         }
     }

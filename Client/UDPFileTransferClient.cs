@@ -23,8 +23,6 @@ namespace P2PProject.Client
         private bool _transferInitiated;
         private string? _saveLocation;
 
-        public ManualResetEvent StopThread = new ManualResetEvent(false);
-
         public UDPFileTransferClient(Node node, string? saveLocation = null)
         {
             _node = node;

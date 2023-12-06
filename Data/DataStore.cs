@@ -16,6 +16,6 @@ namespace P2PProject.Data
             ClearNodeList();
         }
 
-        public static string GetNodeName(Guid id) => NodeMap[id].ClientName;
+        public static string GetNodeName(Guid id) => id == Guid.Empty ? "External Source": NodeMap[id].ClientName;
     }
 }
