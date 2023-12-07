@@ -3,6 +3,7 @@ using P2PProject.Client;
 using P2PProject.Client.Extensions;
 using P2PProject.Client.Models;
 using P2PProject.Data;
+using System.Linq;
 using System.Net;
 
 namespace P2PProject
@@ -284,6 +285,7 @@ namespace P2PProject
                             await GenerateExampleData();
                             break;
                         case 16:
+                            await SimulateUnstableConnection();
                             break;
                         case 17:
                             await AddData(true);
@@ -441,6 +443,27 @@ namespace P2PProject
                     await Task.WhenAll(itemTasks);
                 }
             }
+        }
+
+        private static async Task SimulateUnstableConnection()
+        {
+            Console.WriteLine("Simulating Unstable Connection\n");
+
+            var data = new StringNotification
+            {
+                Id = Guid.NewGuid(),
+                Content = string.Empty,
+                SenderId = _localClient.LocalClientInfo.ClientId,
+                Timestamp = DateTime.Now,
+            };
+            DataStore.NetworkData.Add(data.Id, data);
+
+            var nodeCount = DataStore.NodeMap.Count;
+            var malformedNode = DataStore.NodeMap.First();
+
+            var sendData = ByteExtensions.GetByteArray(data);
+            await _localClient.SendMalformedUDP(sendData.Take(sendData.Length / 2).ToArray(), malformedNode.Value.LocalIPEndPoint);
+            await _localClient.SendUDPToNodes(DataStore.NodeMap.Select(x => x.Key).Where(x => x != malformedNode.Key).Take(nodeCount / 2).ToList(), data);
         }
     }
 }
